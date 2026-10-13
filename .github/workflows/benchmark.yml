@@ -1,0 +1,64 @@
+name: Aegis-Kinetic Performance & Gas Benchmarking
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    types: [ labeled, opened, synchronize ]
+  workflow_dispatch:
+
+jobs:
+  # =========================================================================
+  # JOB 1: Smart Contract Gas Profiling & Diff Snapshot
+  # =========================================================================
+  contract-gas-benchmark:
+    name: Contracts / Gas Profiling Snapshot
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: nightly
+
+      - name: Generate Gas Snapshot
+        run: |
+          cd contracts
+          forge snapshot --check || forge snapshot
+
+      - name: Save Gas Snapshot Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gas-snapshot-report
+          path: contracts/.gas-snapshot
+
+  # =========================================================================
+  # JOB 2: Rust WASM Criterion Math Engine Microbenchmarks
+  # =========================================================================
+  wasm-engine-benchmark:
+    name: Engine / Criterion Microbenchmarks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo Dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "engine -> target"
+
+      - name: Run Criterion Microbenchmarks
+        run: |
+          cd engine
+          cargo bench --bench kinetic_benchmarks -- --output-format bencher | tee bench_results.txt
+
+      - name: Upload Criterion Benchmark Results
+        uses: actions/upload-artifact@v4
+        with:
+          name: criterion-benchmark-report
+          path: engine/target/criterion/

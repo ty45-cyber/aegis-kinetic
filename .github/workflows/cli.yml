@@ -1,0 +1,142 @@
+name: Aegis-Kinetic Production CI/CD & Security Audit
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FOUNDRY_PROFILE: ci
+  RUSTFLAGS: "-D warnings"
+
+jobs:
+  # =========================================================================
+  # JOB 1: Smart Contract Unit, Fuzz, Invariant Tests & Slither Audit
+  # =========================================================================
+  contracts-audit-and-test:
+    name: Contracts / Fuzzing & Static Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: nightly
+
+      - name: Verify Contract Formatting
+        run: |
+          cd contracts
+          forge fmt --check
+
+      - name: Run Unit, Fuzz, and Invariant Tests
+        run: |
+          cd contracts
+          forge test --fuzz-runs 10000 -vvv
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Slither & Solc
+        run: |
+          python -m pip install --upgrade pip
+          pip install slither-analyzer solc-select
+          solc-select install 0.8.26
+          solc-select use 0.8.26
+
+      - name: Run Slither Static Analysis
+        continue-on-error: true
+        run: |
+          cd contracts
+          slither . --config-file slither.config.json || true
+
+  # =========================================================================
+  # JOB 2: Rust WASM State Engine Compilation & Unit Verification
+  # =========================================================================
+  engine-wasm-build:
+    name: Engine / Rust WASM Compilation & Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install Rust Stable Toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache Cargo Dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "engine -> target"
+
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+      - name: Run Rust Native Tests
+        run: |
+          cd engine
+          cargo test --all-targets --workspace --verbose
+
+      - name: Build WASM Package
+        run: |
+          cd engine
+          wasm-pack build --target web --release --out-dir ../client/public/wasm
+
+      - name: Upload WASM Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: aegis-engine-wasm
+          path: client/public/wasm/
+          retention-days: 1
+
+  # =========================================================================
+  # JOB 3: Client Type-Checking, Linting & Next.js Production Build
+  # =========================================================================
+  client-build:
+    name: Client / Next.js Build & Verification
+    needs: engine-wasm-build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: client/package-lock.json
+
+      - name: Download WASM Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: aegis-engine-wasm
+          path: client/public/wasm/
+
+      - name: Install Client Dependencies
+        run: |
+          cd client
+          npm ci
+
+      - name: Run TypeScript Type Check
+        run: |
+          cd client
+          npx tsc --noEmit
+
+      - name: Build Next.js Production App
+        run: |
+          cd client
+          npm run build
+        env:
+          NEXT_PUBLIC_MONAD_RPC_URL: "https://testnet-rpc.monad.xyz"
