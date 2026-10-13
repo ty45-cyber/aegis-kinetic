@@ -5,10 +5,19 @@ import { useMonadRPC } from '../hooks/useMonadRPC';
 import OrderConsole from '../components/OrderConsole';
 import WebGLMatrix from '../components/WebGLMatrix';
 import StateTracePanel from '../components/StateTracePanel';
+import type { StateTrace } from '../types';
 
 export default function HUDPage() {
   const { engine, isReady: isEngineReady, error: engineError } = useWasmEngine();
   const { isConnected: isRpcConnected, traces } = useMonadRPC();
+  const stateTraces: StateTrace[] = traces.map((trace) => ({
+    id: trace.hash,
+    txHash: trace.hash,
+    slotId: trace.slot,
+    latencyMs: trace.latencyMs,
+    status: trace.confirmed ? 'Confirmed' : 'Pending',
+    timestamp: trace.slot,
+  }));
 
   return (
     <main className="min-h-screen bg-black text-gray-100 p-6 grid grid-cols-12 gap-6 font-mono">
@@ -39,7 +48,7 @@ export default function HUDPage() {
         {/* WebGL parallel thread visualization (Zero-copy read from WASM memory) */}
         <section className="h-[400px] bg-gray-900 border border-gray-800 rounded-lg overflow-hidden relative">
           {isEngineReady ? (
-            <WebGLMatrix engine="{engine}"/>
+            <WebGLMatrix tps={traces[0]?.tps ?? 0} />
           ) : (
             <div className="absolute inset-0 flex items-center justify-center text-gray-700">
               AWAITING WASM MEMORY BUFFER...
@@ -49,7 +58,7 @@ export default function HUDPage() {
 
         {/* Lightning Order Entry */}
         <section>
-          <OrderConsole engine="{engine}" isEngineReady="{isEngineReady}"/>
+          <OrderConsole engine={engine} isEngineReady={isEngineReady} />
         </section>
       </div>
 
@@ -61,7 +70,7 @@ export default function HUDPage() {
             <span className="text-xs text-emerald-500">{traces.length > 0 ? traces[0].tps : 0} TPS</span>
           </div>
           <div className="flex-1 overflow-y-auto">
-            <StateTracePanel traces="{traces}"/>
+            <StateTracePanel traces={stateTraces} />
           </div>
         </section>
       </div>

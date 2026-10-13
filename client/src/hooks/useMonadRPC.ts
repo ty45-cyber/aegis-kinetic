@@ -8,7 +8,7 @@ const MONAD_WS_URL = process.env.NEXT_PUBLIC_MONAD_WS_URL || 'wss://testnet-rpc.
 export const useMonadRPC = () => {
   const [isConnected, setIsConnected] = useState(false);
   const [traces, setTraces] = useState<BlockTrace[]>([]);
-  const wsRef = useRef<WebSocket null |>(null);
+  const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout>();
   
   // Use a ref for the buffer to batch React state updates (prevents render thrashing)

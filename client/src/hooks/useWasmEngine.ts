@@ -5,8 +5,8 @@ import type { WasmEngine, EngineContext } from '../types';
 
 export const useWasmEngine = (): EngineContext => {
   const [isReady, setIsReady] = useState(false);
-  const [error, setError] = useState<Error null |>(null);
-  const engineRef = useRef<WasmEngine null |>(null);
+  const [error, setError] = useState<Error | null>(null);
+  const engineRef = useRef<WasmEngine | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -15,14 +15,12 @@ export const useWasmEngine = (): EngineContext => {
       if (engineRef.current) return;
 
       try {
-        // Assuming wasm-pack build with --target web
-        const wasmModule = await import('../../public/engine_bg.wasm');
-        const init = (await import('../../public/engine.js')).default;
-        
-        await init(wasmModule.default);
+        const wasmModulePath = '/wasm/aegis_engine.js';
+        const wasmModule = await import(/* webpackIgnore: true */ wasmModulePath);
+        await wasmModule.default();
         
         if (mounted) {
-          engineRef.current = wasmModule as unknown as WasmEngine;
+          engineRef.current = wasmModule as WasmEngine;
           setIsReady(true);
         }
       } catch (err) {
